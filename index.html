@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Tabard Forge – Submit your tabard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14171f;
+    --panel: #1d222d;
+    --line: #3a4152;
+    --ink: #ece6d6;
+    --muted: #9ba3b5;
+    --brass: #c9a24b;
+    --brass-dark: #8c6d27;
+    --ok: #7cc08a;
+    --bad: #e08a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Alegreya Sans", system-ui, sans-serif;
+    font-size: 18px;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+  main { width: 100%; max-width: 620px; }
+  h1 {
+    font-family: "Cinzel", serif;
+    font-weight: 800;
+    font-size: clamp(2.2rem, 7vw, 3.4rem);
+    letter-spacing: .02em;
+    line-height: 1.05;
+    margin: 0 0 12px;
+    color: var(--brass);
+  }
+  p.lede { color: var(--muted); margin: 0 0 32px; max-width: 52ch; }
+  #drop {
+    border: 2px dashed var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop:focus-visible, #drop.over { border-color: var(--brass); background: #232937; outline: none; }
+  #drop strong { display: block; font-family: "Cinzel", serif; font-size: 1.25rem; margin-bottom: 4px; }
+  #drop span { color: var(--muted); font-size: .95rem; }
+  #previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin: 20px 0 0; padding: 0; list-style: none; }
+  #previews li { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  #previews img { display: block; width: 100%; aspect-ratio: 4/3; object-fit: cover; }
+  #previews .meta { font-size: .8rem; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #previews button {
+    position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%;
+    border: 0; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .bar { height: 3px; background: var(--line); }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--brass); transition: width .2s; }
+  button.go {
+    margin-top: 24px; width: 100%;
+    font-family: "Cinzel", serif; font-weight: 600; font-size: 1.1rem; letter-spacing: .04em;
+    padding: 14px; border: 0; border-radius: 4px; cursor: pointer;
+    background: var(--brass); color: #1b1608;
+  }
+  button.go:hover:not(:disabled) { background: #dcb65c; }
+  button.go:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  button.go:disabled { background: var(--brass-dark); color: #3a2f12; cursor: not-allowed; }
+  #msg { margin-top: 16px; min-height: 1.5em; }
+  #msg.ok { color: var(--ok); }
+  #msg.err { color: var(--bad); }
+  .hp { position: absolute; left: -9999px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>The Tabard Forge</h1>
+  <p class="lede">Show us your tabard. Upload an in-game screenshot of your design (PNG, JPG or WebP, up to 15&nbsp;MB each).</p>
+
+  <div id="drop" tabindex="0" role="button" aria-label="Choose screenshots to upload">
+    <strong>Drop screenshots here</strong>
+    <span>or click to choose files</span>
+  </div>
+  <input id="file" class="hp" type="file" accept="image/png,image/jpeg,image/webp" multiple tabindex="-1">
+  <ul id="previews"></ul>
+
+  <button class="go" id="submit" disabled>Submit tabard</button>
+  <div id="msg" role="status" aria-live="polite"></div>
+</main>
+
+<script type="module">
+  import { upload } from 'https://esm.sh/@vercel/blob@1.0.0/client';
+
+  const MAX_FILES = 5;
+  const MAX_BYTES = 15 * 1024 * 1024;
+  const TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+  const drop = document.getElementById('drop');
+  const input = document.getElementById('file');
+  const list = document.getElementById('previews');
+  const btn = document.getElementById('submit');
+  const msg = document.getElementById('msg');
+  let files = [];
+
+  const say = (text, cls = '') => { msg.textContent = text; msg.className = cls; };
+
+  function addFiles(incoming) {
+    for (const f of incoming) {
+      if (!TYPES.includes(f.type)) { say(`${f.name} isn't a PNG, JPG or WebP image.`, 'err'); continue; }
+      if (f.size > MAX_BYTES) { say(`${f.name} is over 15 MB. Save it at a smaller size and try again.`, 'err'); continue; }
+      if (files.length >= MAX_FILES) { say(`You can submit up to ${MAX_FILES} screenshots at a time.`, 'err'); break; }
+      files.push(f);
+    }
+    render();
+  }
+
+  function render() {
+    list.innerHTML = '';
+    files.forEach((f, i) => {
+      const li = document.createElement('li');
+      const img = document.createElement('img');
+      img.alt = f.name;
+      img.src = URL.createObjectURL(f);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = f.name;
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.innerHTML = '<i></i>';
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.setAttribute('aria-label', `Remove ${f.name}`);
+      x.textContent = '×';
+      x.onclick = () => { files.splice(i, 1); render(); };
+      li.append(img, meta, bar, x);
+      list.append(li);
+    });
+    btn.disabled = files.length === 0;
+  }
+
+  drop.onclick = () => input.click();
+  drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+  input.onchange = () => { addFiles([...input.files]); input.value = ''; };
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    say('Uploading…');
+    const bars = [...list.querySelectorAll('.bar > i')];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const safe = f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        await upload(`submissions/${safe}`, f, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+          onUploadProgress: ({ percentage }) => { bars[i].style.width = percentage + '%'; },
+        });
+        bars[i].style.width = '100%';
+      }
+      say(`Submitted ${files.length} screenshot${files.length > 1 ? 's' : ''}. Thanks for entering!`, 'ok');
+      files = [];
+      setTimeout(render, 1500);
+    } catch (err) {
+      say(`Upload failed: ${err.message}. Check your connection and try again.`, 'err');
+      btn.disabled = false;
+    }
+  };
+</script>
+</body>
+</html>

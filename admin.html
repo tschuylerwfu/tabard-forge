@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tabard Forge – Submissions</title>
+<style>
+  :root { --bg:#14171f; --panel:#1d222d; --line:#3a4152; --ink:#ece6d6; --muted:#9ba3b5; --brass:#c9a24b; --bad:#e08a7a; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:32px 20px; background:var(--bg); color:var(--ink); font:17px/1.5 system-ui, sans-serif; }
+  h1 { color: var(--brass); margin: 0 0 16px; font-size: 1.6rem; }
+  form { display:flex; gap:8px; max-width:420px; margin-bottom:20px; }
+  input, button { font: inherit; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  input { flex: 1; }
+  button { cursor: pointer; background: var(--brass); color: #1b1608; border: 0; font-weight: 600; }
+  #status { color: var(--muted); margin-bottom: 16px; }
+  #status.err { color: var(--bad); }
+  #grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
+  .card { background: var(--panel); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .card img { width:100%; aspect-ratio: 16/10; object-fit: cover; display:block; }
+  .card .row { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; font-size:.85rem; color:var(--muted); gap:8px; }
+  .card a { color: var(--brass); text-decoration: none; }
+  .card button.del { background: transparent; color: var(--bad); border: 1px solid var(--line); padding: 4px 8px; font-weight: 400; }
+</style>
+</head>
+<body>
+  <h1>Tabard submissions</h1>
+  <form id="login">
+    <input id="pw" type="password" placeholder="Admin password" autocomplete="current-password" required>
+    <button>Load</button>
+  </form>
+  <div id="status"></div>
+  <div id="grid"></div>
+
+<script>
+  const grid = document.getElementById('grid');
+  const status = document.getElementById('status');
+  let password = sessionStorage.getItem('tf_pw') || '';
+
+  async function load() {
+    status.className = ''; status.textContent = 'Loading…';
+    const res = await fetch('/api/submissions', { headers: { 'x-admin-password': password } });
+    const data = await res.json();
+    if (!res.ok) { status.className = 'err'; status.textContent = data.error || 'Failed to load'; sessionStorage.removeItem('tf_pw'); return; }
+    sessionStorage.setItem('tf_pw', password);
+    status.textContent = `${data.submissions.length} submission${data.submissions.length === 1 ? '' : 's'}`;
+    grid.innerHTML = '';
+    for (const s of data.submissions) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const when = new Date(s.uploadedAt).toLocaleString();
+      card.innerHTML = `<a href="${s.url}" target="_blank" rel="noopener"><img src="${s.url}" alt="Tabard submission" loading="lazy"></a>
+        <div class="row"><span>${when}</span><span><a href="${s.url}" download>Download</a></span><button class="del">Delete</button></div>`;
+      card.querySelector('.del').onclick = async () => {
+        if (!confirm('Delete this submission?')) return;
+        await fetch('/api/submissions', { method: 'DELETE', headers: { 'x-admin-password': password, 'content-type': 'application/json' }, body: JSON.stringify({ url: s.url }) });
+        card.remove();
+      };
+      grid.append(card);
+    }
+  }
+
+  document.getElementById('login').onsubmit = (e) => { e.preventDefault(); password = document.getElementById('pw').value; load(); };
+  if (password) load();
+</script>
+</body>
+</html>
